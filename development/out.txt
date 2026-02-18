@@ -1,0 +1,133 @@
+[*] Loading dataset from: ../data/overlap_test_dataset.json
+[+] Loaded 279 feature vectors
+[+] Total features: 47
+
+================ BASIC STATISTICS ================
+                                     count  ...          max
+rssi_mean                            279.0  ...   -37.388889
+rssi_std                             279.0  ...    11.773977
+rssi_min                             279.0  ...   -60.000000
+rssi_max                             279.0  ...   -30.000000
+rssi_range                           279.0  ...    42.000000
+rssi_sudden_change_max               279.0  ...    36.000000
+rssi_sudden_change_mean              279.0  ...     4.971429
+rssi_too_strong                      279.0  ...     0.000000
+signal_stability                     279.0  ...     0.989031
+beacon_interval_mean                 279.0  ...   100.000000
+beacon_interval_std                  279.0  ...     0.000000
+observation_duration                 279.0  ...   298.915359
+packets_per_second                   279.0  ...     4.506784
+time_since_first_seen                279.0  ...   665.933067
+beacon_timing_jitter                 279.0  ...  1633.138198
+beacon_timing_irregularity           279.0  ...  6143.642000
+disappearance_count                  279.0  ...     0.000000
+uptime_inconsistency                 279.0  ...     0.000000
+ssid_bssid_count                     279.0  ...     1.000000
+channel_changes                      279.0  ...     0.000000
+same_ssid_different_channels         279.0  ...     0.000000
+simultaneous_same_ssid_same_channel  279.0  ...     0.000000
+encryption_numeric                   279.0  ...     3.000000
+encryption_changed                   279.0  ...     0.000000
+encryption_downgrade                 279.0  ...     0.000000
+unexpected_open_network              279.0  ...     0.000000
+vendor_is_common                     279.0  ...     0.000000
+locally_administered_mac             279.0  ...     0.000000
+vendor_mismatch                      279.0  ...     0.000000
+capability_changed                   279.0  ...     0.000000
+capability_differs_from_initial      279.0  ...     0.000000
+seq_number_irregularity              279.0  ...   629.264207
+seq_number_backwards                 279.0  ...     1.000000
+ie_order_changed                     279.0  ...     0.000000
+ie_order_differs_from_initial        279.0  ...     0.000000
+ie_count_mean                        279.0  ...    16.000000
+ie_count_variance                    279.0  ...     0.000000
+max_data_rate                        279.0  ...    54.000000
+max_rate_changed                     279.0  ...     0.000000
+ht_capable                           279.0  ...     1.000000
+vht_capable                          279.0  ...     0.000000
+ht_capability_changed                279.0  ...     0.000000
+vht_capability_changed               279.0  ...     0.000000
+beacon_count                         279.0  ...   915.000000
+channel_stability                    279.0  ...     1.000000
+window_seconds                       279.0  ...   300.000000
+extraction_round                     279.0  ...    31.000000
+
+[47 rows x 8 columns]
+
+================ MISSING VALUES ==================
+No missing values.
+
+================ ZERO VARIANCE FEATURES ==========
+Features with zero variance:
+['rssi_too_strong', 'beacon_interval_mean', 'beacon_interval_std', 'disappearance_count', 'uptime_inconsistency', 'ssid_bssid_count', 'channel_changes', 'same_ssid_different_channels', 'simultaneous_same_ssid_same_channel', 'encryption_numeric', 'encryption_changed', 'encryption_downgrade', 'unexpected_open_network', 'vendor_is_common', 'locally_administered_mac', 'vendor_mismatch', 'capability_changed', 'capability_differs_from_initial', 'ie_order_changed', 'ie_order_differs_from_initial', 'ie_count_variance', 'max_data_rate', 'max_rate_changed', 'ht_capable', 'vht_capable', 'ht_capability_changed', 'vht_capability_changed', 'channel_stability']
+
+================ LOW VARIANCE FEATURES ===========
+Features with near-zero variance:
+['rssi_too_strong', 'beacon_interval_mean', 'beacon_interval_std', 'disappearance_count', 'uptime_inconsistency', 'ssid_bssid_count', 'channel_changes', 'same_ssid_different_channels', 'simultaneous_same_ssid_same_channel', 'encryption_numeric', 'encryption_changed', 'encryption_downgrade', 'unexpected_open_network', 'vendor_is_common', 'locally_administered_mac', 'vendor_mismatch', 'capability_changed', 'capability_differs_from_initial', 'ie_order_changed', 'ie_order_differs_from_initial', 'ie_count_variance', 'max_data_rate', 'max_rate_changed', 'ht_capable', 'vht_capable', 'ht_capability_changed', 'vht_capability_changed', 'channel_stability']
+
+================ HIGH CORRELATION FEATURES =======
+Highly correlated feature pairs (>0.95):
+rssi_max  <-->  rssi_mean   (corr=0.989)
+rssi_sudden_change_max  <-->  rssi_range   (corr=0.980)
+rssi_sudden_change_mean  <-->  rssi_std   (corr=0.993)
+signal_stability  <-->  rssi_std   (corr=-0.997)
+signal_stability  <-->  rssi_sudden_change_mean   (corr=-0.985)
+packets_per_second  <-->  rssi_mean   (corr=0.963)
+packets_per_second  <-->  rssi_max   (corr=0.951)
+beacon_timing_jitter  <-->  packets_per_second   (corr=-0.977)
+ie_count_mean  <-->  rssi_std   (corr=-0.991)
+ie_count_mean  <-->  rssi_sudden_change_mean   (corr=-0.977)
+ie_count_mean  <-->  signal_stability   (corr=0.998)
+beacon_count  <-->  observation_duration   (corr=0.954)
+extraction_round  <-->  time_since_first_seen   (corr=1.000)
+
+================ FEATURE RANGES ==================
+rssi_mean: min=-75.6364, max=-37.3889
+rssi_std: min=0.7941, max=11.7740
+rssi_min: min=-94.0000, max=-60.0000
+rssi_max: min=-72.0000, max=-30.0000
+rssi_range: min=2.0000, max=42.0000
+rssi_sudden_change_max: min=2.0000, max=36.0000
+rssi_sudden_change_mean: min=0.5600, max=4.9714
+rssi_too_strong: min=0.0000, max=0.0000
+signal_stability: min=0.6851, max=0.9890
+beacon_interval_mean: min=100.0000, max=100.0000
+beacon_interval_std: min=0.0000, max=0.0000
+observation_duration: min=7.9880, max=298.9154
+packets_per_second: min=0.7870, max=4.5068
+time_since_first_seen: min=18.4071, max=665.9331
+beacon_timing_jitter: min=303.7942, max=1633.1382
+beacon_timing_irregularity: min=1331.5170, max=6143.6420
+disappearance_count: min=0.0000, max=0.0000
+uptime_inconsistency: min=0.0000, max=0.0000
+ssid_bssid_count: min=1.0000, max=1.0000
+channel_changes: min=0.0000, max=0.0000
+same_ssid_different_channels: min=0.0000, max=0.0000
+simultaneous_same_ssid_same_channel: min=0.0000, max=0.0000
+encryption_numeric: min=3.0000, max=3.0000
+encryption_changed: min=0.0000, max=0.0000
+encryption_downgrade: min=0.0000, max=0.0000
+unexpected_open_network: min=0.0000, max=0.0000
+vendor_is_common: min=0.0000, max=0.0000
+locally_administered_mac: min=0.0000, max=0.0000
+vendor_mismatch: min=0.0000, max=0.0000
+capability_changed: min=0.0000, max=0.0000
+capability_differs_from_initial: min=0.0000, max=0.0000
+seq_number_irregularity: min=2.9673, max=629.2642
+seq_number_backwards: min=0.0000, max=1.0000
+ie_order_changed: min=0.0000, max=0.0000
+ie_order_differs_from_initial: min=0.0000, max=0.0000
+ie_count_mean: min=11.0000, max=16.0000
+ie_count_variance: min=0.0000, max=0.0000
+max_data_rate: min=54.0000, max=54.0000
+max_rate_changed: min=0.0000, max=0.0000
+ht_capable: min=1.0000, max=1.0000
+vht_capable: min=0.0000, max=0.0000
+ht_capability_changed: min=0.0000, max=0.0000
+vht_capability_changed: min=0.0000, max=0.0000
+beacon_count: min=22.0000, max=915.0000
+channel_stability: min=1.0000, max=1.0000
+window_seconds: min=30.0000, max=300.0000
+extraction_round: min=1.0000, max=31.0000
+
+[✓] Dataset inspection complete.
