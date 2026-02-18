@@ -8,13 +8,13 @@ from extract import FeatureExtractor
 from channel_hopper import ChannelHopper
 from json_output import create_output_data, print_save_summary
 
-interface = "wlan0mon"
+interface = "wlan1"
 
 WINDOWS = [30, 120, 300]
 EXTRACT_INTERVAL = 20
 MIN_PACKETS = 5
 
-DATASET_FILE = "../data/overlap_test_dataset.json"
+DATASET_FILE = "../data/ni.json"
 
 
 if not os.path.exists(DATASET_FILE):
