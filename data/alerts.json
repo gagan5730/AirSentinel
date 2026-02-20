@@ -1,0 +1,58 @@
+[
+  {
+    "timestamp": "2026-02-20T19:49:53.460555",
+    "bssid": "c2:f6:6f:c4:db:a8",
+    "ssid": "Lord of the Pings",
+    "level": "HIGH",
+    "score": -0.13666433233347808,
+    "reasons": [
+      "Evil Twin detected: Suspicious AP shadowing an authentic hardware AP ('Lord of the Pings')",
+      "Software MAC detected (typical of hotspots/software APs)"
+    ]
+  },
+  {
+    "timestamp": "2026-02-20T19:51:18.043257",
+    "bssid": "c2:f6:6f:c4:db:a8",
+    "ssid": "Lord of the Pings",
+    "level": "HIGH",
+    "score": -0.16988497003437286,
+    "reasons": [
+      "Evil Twin detected: Suspicious AP shadowing an authentic hardware AP ('Lord of the Pings')",
+      "Software MAC detected (typical of hotspots/software APs)"
+    ]
+  },
+  {
+    "timestamp": "2026-02-20T20:00:32.658808",
+    "bssid": "1e:8d:63:f0:13:5e",
+    "ssid": "Lord of the Pings",
+    "level": "HIGH",
+    "score": -0.1929334753572266,
+    "reasons": [
+      "Evil Twin detected: Suspicious AP shadowing an authentic hardware AP ('Lord of the Pings')",
+      "Software MAC detected (typical of hotspots/software APs)",
+      "Highly unstable signal (stability: 0.44)"
+    ]
+  },
+  {
+    "timestamp": "2026-02-20T20:01:03.378417",
+    "bssid": "1e:8d:63:f0:13:5e",
+    "ssid": "Lord of the Pings",
+    "level": "HIGH",
+    "score": -0.1832069867644126,
+    "reasons": [
+      "Evil Twin detected: Suspicious AP shadowing an authentic hardware AP ('Lord of the Pings')",
+      "Software MAC detected (typical of hotspots/software APs)"
+    ]
+  },
+  {
+    "timestamp": "2026-02-20T20:10:08.046077",
+    "bssid": "1e:8d:63:f0:13:5e",
+    "ssid": "Lord of the Pings",
+    "level": "HIGH",
+    "score": -0.1314464255993556,
+    "reasons": [
+      "Evil Twin detected: Suspicious AP shadowing an authentic hardware AP ('Lord of the Pings')",
+      "Software MAC detected (typical of hotspots/software APs)"
+    ]
+  }
+]
