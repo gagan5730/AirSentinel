@@ -12,8 +12,8 @@ from sklearn.preprocessing import StandardScaler
 # CONFIG
 
 DATASET_FILE = sys.argv[1] if len(sys.argv) > 1 else "../data/overlap_test_dataset.json"
-MODEL_OUTPUT = "../model/iforest_model.pkl"
-SCALER_OUTPUT = "../model/scaler.pkl"
+MODEL_OUTPUT = "model/iforest_model.pkl"
+SCALER_OUTPUT = "model/scaler.pkl"
 
 ML_FEATURES = [
     # Signal behavior
@@ -24,6 +24,7 @@ ML_FEATURES = [
     "packets_per_second",
     "beacon_timing_jitter",
     "beacon_timing_irregularity",
+    "beacon_count",
 
     # Sequence behavior
     "seq_number_irregularity",
@@ -67,26 +68,30 @@ print(f"[+] Loaded {len(df)} feature vectors")
 print("[DEBUG] Columns:", df.columns.tolist())
 
 print("[DEBUG] Checking selected features...") """
-# SELECT FEATURES
-
 print("[*] Selecting ML features")
-
 missing = [f for f in ML_FEATURES if f not in df.columns]
 if missing:
-	print(f"[!] Missing features in dataset: {missing}")
-	sys.exit(1)
+    print(f"[!] Missing features in dataset: {missing}")
+    sys.exit(1)
+
+# Apply log transform BEFORE extracting X
+LOG_FEATURES = [
+    "beacon_timing_jitter",
+    "beacon_timing_irregularity",
+    "beacon_count",
+    "seq_number_irregularity",
+]
+for col in LOG_FEATURES:
+    df[col] = np.log1p(df[col])
 
 X = df[ML_FEATURES].apply(pd.to_numeric, errors='coerce').values
 
 if np.isnan(X).any() or np.isinf(X).any():
-	print("[!] NaN or Inf detected in feature matrix")
-	sys.exit(1)
-
+    print("[!] NaN or Inf detected in feature matrix")
+    sys.exit(1)
 
 # SCALE FEATURES
-
 print("[*] Scaling features")
-
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
@@ -96,7 +101,7 @@ print("[*] Training model")
 
 model = IsolationForest(
 	n_estimators=300,
-	contamination="auto",    # auto kept as dataset used is clean
+	contamination="auto",    
 	random_state=42,
 	n_jobs=-1
 )
@@ -128,6 +133,7 @@ joblib.dump(scaler, SCALER_OUTPUT)
 
 print(f"\n[+] Model saved to:  {MODEL_OUTPUT}")
 print(f"[+] Scaler saved to: {SCALER_OUTPUT}")
+print(os.path.abspath(MODEL_OUTPUT))
 
 
 """ plt.hist(scores, bins=50)

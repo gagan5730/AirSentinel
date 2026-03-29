@@ -64,6 +64,7 @@ class ChannelHopper:
 				pass
 		
 		self.current_channel = channel
+		print(f"[*] Now listening on channel {channel}...")
 		
 	def _hop_loop(self):
 		if not self.channels:

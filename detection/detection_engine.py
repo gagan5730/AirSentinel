@@ -14,149 +14,80 @@ import numpy as np
 import json
 import requests
 from datetime import datetime
-from collections import defaultdict
+from collections import defaultdict, deque
 import argparse
 from data_collection.channel_hopper import ChannelHopper
+from data_collection.extract import FeatureExtractor
 from utils.notifications import TelegramNotifier
+from data_collection.capture import extract_ap_features
+
+TRUST_UNVERIFIED = 'UNVERIFIED'   
+TRUST_MONITORING = 'MONITORING'   
+TRUST_SUSPICIOUS = 'SUSPICIOUS'   
+TRUST_THREAT     = 'THREAT'       
+
+ML_FEATURES = [
+    "rssi_mean",
+    "rssi_std",
+    "packets_per_second",
+    "beacon_timing_jitter",
+    "beacon_timing_irregularity",
+    "beacon_count",
+    "seq_number_irregularity",
+    "seq_number_backwards",
+    "ssid_bssid_count",
+    "simultaneous_same_ssid_same_channel",
+    "disappearance_count",
+    "uptime_inconsistency",
+    "encryption_numeric",
+    "locally_administered_mac",
+    "ie_order_changed",
+    "ie_count_mean",
+    "ie_count_variance",
+    "vht_capable"
+]
+
+LOG_FEATURES = [
+    "beacon_timing_jitter",
+    "beacon_timing_irregularity",
+    "beacon_count",
+    "seq_number_irregularity",
+]
 
 
 class AirSentinelEngine:
-    """
-    Production evil twin detection engine
-    Uses pre-trained model for real-time detection
-    """
-    
-    def __init__(self, model_path, scaler_path=None, min_packets=10, alert_threshold=-0.3, telegram_token=None, telegram_chat_id=None):
-        """
-        Initialize detection engine
-        
-        Args:
-            model_path: Path to trained model (.joblib)
-            min_packets: Minimum packets before checking (default: 10)
-            alert_threshold: Anomaly score threshold (default: -0.3)
-        """
+    def __init__(self, model_path, scaler_path=None, min_packets=10, alert_threshold=0.08, telegram_token=None, telegram_chat_id=None):
         print("="*70)
         print("🛡️  AirSentinel Detection Engine v1.0")
         print("="*70)
         print()
         
-        # Load model
         print("[*] Loading trained model...")
-        
-        # Try loading - works with both .pkl and .joblib
-        try:
-            model_data = joblib.load(model_path)
-        except:
-            import pickle
-            with open(model_path, 'rb') as f:
-                model_data = pickle.load(f)
-        
-        # Check if it's a dict (model + scaler together)
-        if isinstance(model_data, dict):
-            print("  → Dict format detected")
-            self.model = model_data.get('model')
-            self.scaler = model_data.get('scaler')
-            
-            # Get feature names
-            if 'features' in model_data:
-                self.feature_names = model_data['features']
-            elif 'feature_names' in model_data:
-                self.feature_names = model_data['feature_names']
-            else:
-                self.feature_names = None
-        
-        else:
-            # Separate files
-            print("  → Single model format detected")
-            self.model = model_data
-            
-            self.scaler = None
-            
-            # Use provided scaler path or try to find it
-            if scaler_path and os.path.exists(scaler_path):
-                print(f"  → Loading provided scaler: {scaler_path}")
-                try:
-                    self.scaler = joblib.load(scaler_path)
-                except:
-                    import pickle
-                    with open(scaler_path, 'rb') as f:
-                        self.scaler = pickle.load(f)
-            
-            # If no scaler yet, try to auto-find
-            if self.scaler is None:
-                scaler_paths = [
-                    model_path.replace('_model.joblib', '_scaler.joblib'),
-                    model_path.replace('_model.pkl', '_scaler.pkl'),
-                    model_path.replace('.joblib', '_scaler.joblib'),
-                    model_path.replace('.pkl', '_scaler.pkl'),
-                ]
-                
-                for spath in scaler_paths:
-                    if os.path.exists(spath):
-                        print(f"  → Found scaler: {spath}")
-                        try:
-                            self.scaler = joblib.load(spath)
-                        except:
-                            import pickle
-                            with open(spath, 'rb') as f:
-                                self.scaler = pickle.load(f)
-                        break
-            
-            if self.scaler is None:
-                print("  ⚠️  WARNING: No scaler found!")
-                print("  ⚠️  Creating default scaler (may not work correctly)")
-                from sklearn.preprocessing import StandardScaler
-                self.scaler = StandardScaler()
-                # This will fail on first use - need to fit it
-            
-            # Try to find features
-            feature_paths = [
-                model_path.replace('_model.joblib', '_features.json'),
-                model_path.replace('_model.pkl', '_features.json'),
-                model_path.replace('.joblib', '_features.json'),
-                model_path.replace('.pkl', '_features.json'),
-            ]
-            
-            self.feature_names = None
-            for fpath in feature_paths:
-                if os.path.exists(fpath):
-                    try:
-                        with open(fpath, 'r') as f:
-                            self.feature_names = json.load(f)
-                        break
-                    except (UnicodeDecodeError, json.JSONDecodeError):
-                        # Not a JSON file, try pickle
-                        try:
-                            import pickle
-                            with open(fpath, 'rb') as f:
-                                self.feature_names = pickle.load(f)
-                            break
-                        except:
-                            continue
-        
-        # Default features if not found
-        if self.feature_names is None:
-            print("  → Using default feature names (17 features)")
-            self.feature_names = [
-                'rssi_mean', 'rssi_std', 'rssi_range', 'signal_stability',
-                'time_since_first_seen', 'beacon_timing_irregularity',
-                'ssid_bssid_count', 'channel_changes',
-                'same_ssid_different_channels', 'encryption_numeric',
-                'encryption_changed', 'locally_administered_mac',
-                'vendor_is_common', 'vendor_mismatch', 'disappearance_count',
-                'rssi_sudden_change_max', 'rssi_sudden_change_mean'  # Added 2 more
-            ]
-        
+        self.model = joblib.load(model_path)
+        self.scaler = joblib.load(scaler_path)
+
+        self.extractor = FeatureExtractor(use_packet_time=False)
+        self.feature_names = ML_FEATURES
+
+        print("  → Using default feature names (18 features)")
+       
         print(f"  ✓ Model loaded: {type(self.model).__name__}")
         print(f"  ✓ Features: {len(self.feature_names)}")
         print()
         
-        # Configuration
         self.min_packets = min_packets
         self.alert_threshold = alert_threshold
         
-        # Tracking
-        self.ap_observations = defaultdict(list)
+        self.trust_states = {}          
+        self.ap_trust_scores = {}       
+        self.ap_eval_counts = {}        
+        self.WARMUP_EVALS    = 3        
+        self.WARMUP_LENIENCY = 0.25     
+        self.consecutive_anomalies  = {} 
+        self.CONFIRMATION_REQUIRED  = 2 #how many anomalies till alert
+
+        # General observation tracking
+        
         self.ap_info = defaultdict(dict)
         self.ssid_bssid_map = defaultdict(set)
         self.checked_aps = set()
@@ -170,7 +101,6 @@ class AirSentinelEngine:
         # Notifications
         self.notifier = TelegramNotifier(telegram_token, telegram_chat_id)
         self.IS_NOTIF_ON = False
-        # Load Configuration
         config_path = 'data/config.json'
         if os.path.exists(config_path):
             try:
@@ -188,45 +118,44 @@ class AirSentinelEngine:
         print(f"  Alert threshold: {alert_threshold}")
         print(f"  Notfications: {self.IS_NOTIF_ON}")
         
+        # Clear previous alerts on startup
+        self._clear_previous_alerts()
+        
         # Dashboard API
         self.dashboard_base_url = "http://localhost:5000/api"
         print(f"  Dashboard API: {self.dashboard_base_url}")
         print()
-    
+
+    def _set_trust_state(self, bssid, state):
+        old = self.trust_states.get(bssid, TRUST_UNVERIFIED)
+        if old == state:
+            return
+        self.trust_states[bssid] = state
+        self._report_trust_state_to_dashboard(bssid, state)
+        print(f"[ZT] {bssid}  {old} \u2192 {state}")
+
+    # ── Packet Observation ─────────────────────────────────────────────────
+
     def observe_packet(self, packet):
-        """Process captured packet"""
-        
-        # Import here to avoid circular dependency
-        from data_collection.capture import extract_ap_features
+        """Process captured packet."""
         
         self.total_packets += 1
         
-        # Extract features
         try:
             packet_features = extract_ap_features(packet)
-        except Exception as e:
+        except Exception:
             return
         
         if not packet_features or 'bssid' not in packet_features:
             return
         
-        bssid = packet_features['bssid']
+        bssid = packet_features['bssid'].upper()
         ssid = packet_features.get('ssid', '')
         
-        # Store observation
-        observation = {
-            'timestamp': datetime.now(),
-            'rssi': packet_features.get('rssi'),
-            'channel': packet_features.get('channel'),
-            'vendor': packet_features.get('vendor', 'Unknown'),
-            'encryption': packet_features.get('encryption_type', 'Unknown'),
-            'locally_admin': packet_features.get('locally_administered_mac', 0),
-        }
-        
-        self.ap_observations[bssid].append(observation)
+        self.extractor.observe_packet(packet_features)
         self.ssid_bssid_map[ssid].add(bssid)
-        
-        # Track AP info (first time)
+
+        # ── Zero-Trust: First-Seen Handling ────────────────────────────────
         if bssid not in self.ap_info:
             self.ap_info[bssid] = {
                 'ssid': ssid,
@@ -234,49 +163,82 @@ class AirSentinelEngine:
                 'vendor': packet_features.get('vendor', 'Unknown'),
                 'encryption': packet_features.get('encryption_type', 'Unknown'),
             }
-            # Report new network to dashboard
+            self.trust_states[bssid] = TRUST_UNVERIFIED
+            print(f"[ZT] New AP: {bssid} ({ssid}) — UNVERIFIED")
+
             self._report_network_to_dashboard(bssid, packet_features)
         
-        # Check for threats
-        if len(self.ap_observations[bssid]) >= self.min_packets:
+        # ── Threat / Trust Evaluation ──────────────────────────────────────
+        packet_count = len(self.extractor.ap_observations[bssid])
+        if packet_count >= self.min_packets:
             if bssid not in self.checked_aps:
+                # Promote to MONITORING before the first full check
+                if self.trust_states.get(bssid) == TRUST_UNVERIFIED:
+                    self._set_trust_state(bssid, TRUST_MONITORING)
                 self.check_threat(bssid)
                 self.checked_aps.add(bssid)
-            elif len(self.ap_observations[bssid]) % 50 == 0:
-                # Re-check every 50 packets
+            elif packet_count % 50 == 0:
                 self.check_threat(bssid)
     
     def check_threat(self, bssid):
         """
-        Check if AP is a threat. 
-        Modified to ONLY detect Evil Twins (SSID collisions) as per user request.
+        Zero-Trust threat evaluation pipeline 
+          1. Low-confidence baseline  — dampen scoring during warm-up
+          2. Generate & compare anomaly score
+          3. Incremental trust score   — slow accumulation / fast drop
+          4. Anomaly confirmation      — require consecutive hits before alerting
         """
         
+        features = self.extractor.extract_features(bssid, window_seconds=120)
         # Extract features
-        features = self._extract_features(bssid)
         if not features:
             return
         
         ssid = features.get('ssid', 'Unknown')
-        
-        # 1. Gather Suspicion Factors (but don't set is_threat yet)
+
+        # ── Step 1: Low-Confidence Baseline ───────────────────────────────────
+        eval_count = self.ap_eval_counts.get(bssid, 0) + 1
+        self.ap_eval_counts[bssid] = eval_count
+
+        confidence_factor = min(1.0, eval_count / self.WARMUP_EVALS)  # 0.33 → 0.67 → 1.0
+        warmup_bonus = self.WARMUP_LENIENCY * (1.0 - confidence_factor)  # 0.25 → 0.08 → 0
+        effective_threshold = self.alert_threshold + warmup_bonus
+
+        if eval_count <= self.WARMUP_EVALS:
+            print(f"[ZT] {bssid} warm-up eval {eval_count}/{self.WARMUP_EVALS} "
+                  f"(confidence={confidence_factor:.0%}, eff.threshold={effective_threshold:.3f})")
+
+        # ── Step 2: Generate & evaluate anomaly score ────────────────────────
+        is_threat = False
+        threat_level = 'NONE'
+
+        for col in LOG_FEATURES:
+            if col in features:
+                features[col] = np.log1p(max(features[col], 0))
+
         feature_vector = [features.get(fname, 0) for fname in self.feature_names]
         X = np.array(feature_vector).reshape(1, -1)
         X_scaled = self.scaler.transform(X)
-        
+
         prediction = self.model.predict(X_scaled)[0]
-        score = self.model.decision_function(X_scaled)[0]
-        
+        score = -self.model.decision_function(X_scaled)[0]
+
         is_suspicious = False
         reasons = []
-        
-        # Anomaly Score check
-        if score < self.alert_threshold:
+
+        # Use effective_threshold (warm-up leniency applied)
+        if score > effective_threshold:
             is_suspicious = True
-            reasons.append(f"Low anomaly score ({score:.3f} < {self.alert_threshold})")
-            
-        if prediction == -1 and score < self.alert_threshold:
+            reasons.append(f"High threat score ({score:.3f} > {effective_threshold:.3f})"
+                           + (f" [warm-up {eval_count}/{self.WARMUP_EVALS}]" if eval_count <= self.WARMUP_EVALS else ""))
+
+        if prediction == -1 and score > effective_threshold:
             reasons.append(f"Anomalous behavior detected by model (score: {score:.3f})")
+
+        if is_suspicious and score > (self.alert_threshold + 0.05):
+            is_threat = True
+            threat_level = 'HIGH'
+            reasons.insert(0, f"ML-based anomaly detected (score: {score:.3f})")
             
         # Software MAC check
         current_has_software_mac = features.get('locally_administered_mac', 0) == 1
@@ -293,32 +255,57 @@ class AirSentinelEngine:
         same_ssid_bssids = list(self.ssid_bssid_map[ssid])
         ssid_bssid_count = len(same_ssid_bssids)
         
-        # GATEKEEPER: Only flag if there are multiple BSSIDs for this SSID
-        if ssid_bssid_count <= 1:
-            # We ignore standalone hotspots or anomalous APs as per instructions
+        # Perfect Clone Detection (Same BSSID Spoofing)
+        # Using Sequence Number analysis and signal stability
+        seq_ooo = features.get('seq_out_of_order_rate', 0)
+        seq_vol = features.get('seq_volatility', 0)
+        
+        #perfect clone
+        is_perfect_clone = (seq_ooo > 0.15 or seq_vol > 50) or (score > (self.alert_threshold + 0.3) and stability < 0.4)
+        #anti horspot
+        if ssid_bssid_count <= 1 and current_has_software_mac:
+            is_perfect_clone = False
+
+                   
+        if is_perfect_clone and ssid_bssid_count <= 1:
+            is_threat = True
+            threat_level = 'HIGH'
+            reasons.insert(0, f"CRITICAL: 'Perfect Clone' (BSSID Spoofing) detected on SSID '{ssid}'")
+            if seq_ooo > 0.15:
+                reasons.append(f"Sequence number anomaly: {seq_ooo:.1%} out-of-order frames detected (Hardware mismatch)")
+            if stability < 0.4:
+                reasons.append(f"Severe signal instability: {stability:.2f} (Likely multiple transmitters on BSSID {bssid})")
+            
+            self._set_trust_state(bssid, TRUST_THREAT)
+            self.alert(bssid, ssid, threat_level, reasons, score, features)
             return
             
         # 3. Analyze the group of APs sharing this SSID
-        is_threat = False
-        threat_level = 'NONE'
+        
         
         bssid_analysis = []
         for other_bssid in same_ssid_bssids:
-            other_obs = self.ap_observations.get(other_bssid, [])
-            if len(other_obs) < 3:
+            other_buffer = self.extractor.ap_observations.get(other_bssid)
+
+            # Check buffer exists and has enough data
+            if not other_buffer or len(other_buffer) < 3:
                 continue
-            
+
+            # Get latest observation (most recent packet)
+            latest_obs = other_buffer.buffer[-1]
+
             other_info = {
                 'bssid': other_bssid,
-                'vendor': self.ap_info[other_bssid].get('vendor', 'Unknown'),
-                'locally_admin': other_obs[0].get('locally_admin', 0),
-                'first_seen': self.ap_info[other_bssid]['first_seen'],
+                'vendor': self.extractor.bssid_info[other_bssid].get('vendor', 'Unknown'),
+                'locally_admin': latest_obs.get('locally_administered_mac', 0),
+                'first_seen': self.extractor.bssid_info[other_bssid]['first_seen'],
                 'is_current': other_bssid == bssid
             }
+
             bssid_analysis.append(other_info)
             
         if len(bssid_analysis) < 2:
-            # Not enough data on peers yet
+            # Not enough data on peers yet — stay MONITORING
             return
             
         # Check for presence of an authentic (hardware) peer
@@ -342,25 +329,55 @@ class AirSentinelEngine:
                     reasons.append(f"Unknown AP vendor among known providers for SSID '{ssid}'")
                 
         # CASE 4: Age difference check (only if already somewhat suspicious)
-        if not is_threat and is_suspicious and len(bssid_analysis) > 1:
-            sorted_by_age = sorted(bssid_analysis, key=lambda x: x['first_seen'])
-            if sorted_by_age[-1]['bssid'] == bssid:
-                age_diff = (sorted_by_age[-1]['first_seen'] - sorted_by_age[0]['first_seen']).total_seconds()
-                if age_diff > 30:
-                    # Only flag if there's at least one other AP that appeared much earlier
-                    is_threat = True
-                    threat_level = 'MEDIUM'
-                    reasons.append(f"AP appeared significantly later ({age_diff:.0f}s) than others with same SSID")
+        # if not is_threat and is_suspicious and len(bssid_analysis) > 1:
+        #     sorted_by_age = sorted(bssid_analysis, key=lambda x: x['first_seen'])
+        #     if sorted_by_age[-1]['bssid'] == bssid:
+        #         age_diff = (sorted_by_age[-1]['first_seen'] - sorted_by_age[0]['first_seen']).total_seconds()
+        #         if age_diff > 45:
+        #             # Only flag if there's at least one other AP that appeared much earlier
+        #             is_threat = True
+        #             threat_level = 'MEDIUM'
+        #             reasons.append(f"AP appeared significantly later ({age_diff:.0f}s) than others with same SSID")
 
         # FALSE POSITIVE MITIGATION (Enterprise WiFi)
         if is_threat and not current_has_software_mac:
             unique_vendors = set(b['vendor'] for b in bssid_analysis)
             if len(unique_vendors) == 1 and list(unique_vendors)[0] in ['Cisco', 'Aruba', 'Ubiquiti', 'Ruckus']:
                 is_threat = False
-                
-        # Final Alert
+
+        # ── Step 3: Incremental Trust Score ────────────────────────────────
+        current_score = self.ap_trust_scores.get(bssid, 0.0)
         if is_threat:
-            self.alert(bssid, ssid, threat_level, reasons, score, features)
+            new_score = -1.0                              # confirmed threat: immediate floor
+        elif is_suspicious:
+            new_score = max(-1.0, current_score - 0.10)  # slow erosion
+        else:
+            new_score = min(1.0, current_score + 0.05)   # slow accumulation on clean evals
+        self.ap_trust_scores[bssid] = round(new_score, 3)
+
+        # ── Step 4: Anomaly Confirmation ────────────────────────────────────
+        # Require CONFIRMATION_REQUIRED consecutive anomalous evals before alerting.
+        # This suppresses one-off false positives ("Log & Suppress alert" in flowchart).
+        if is_threat:
+            consec = self.consecutive_anomalies.get(bssid, 0) + 1
+            self.consecutive_anomalies[bssid] = consec
+
+            if consec >= self.CONFIRMATION_REQUIRED:
+                self._set_trust_state(bssid, TRUST_THREAT)
+                self.alert(bssid, ssid, threat_level, reasons, score, features)
+            else:
+                self._set_trust_state(bssid, TRUST_SUSPICIOUS)
+                print(f"[ZT] {bssid} anomaly #{consec} — awaiting confirmation "
+                      f"({self.CONFIRMATION_REQUIRED - consec} more eval(s) needed) "
+                      f"[trust_score={new_score:.2f}]")
+        elif is_suspicious:
+            consec = self.consecutive_anomalies.get(bssid, 0) + 1
+            self.consecutive_anomalies[bssid] = consec
+            self._set_trust_state(bssid, TRUST_SUSPICIOUS)
+        else:
+            # Clean eval — reset consecutive counter so next anomaly starts fresh
+            self.consecutive_anomalies[bssid] = 0
+            self._set_trust_state(bssid, TRUST_MONITORING)
         
     
     def alert(self, bssid, ssid, level, reasons, score, features):
@@ -384,7 +401,6 @@ class AirSentinelEngine:
             'reasons': reasons,
             'features': features
         }
-        
         self.alerts.append(alert)
         
         # Display alert
@@ -407,6 +423,7 @@ class AirSentinelEngine:
         print("Details:")
         print(f"  Signal Stability: {features.get('signal_stability', 0):.2f}")
         print(f"  RSSI Std Dev:     {features.get('rssi_std', 0):.1f} dBm")
+        print(f"  Seq OOO Rate:     {features.get('seq_out_of_order_rate', 0):.1%}")
         print(f"  Software MAC:     {'Yes ⚠️' if features.get('locally_administered_mac') else 'No'}")
         
         if level == 'HIGH':
@@ -428,17 +445,27 @@ class AirSentinelEngine:
         self._report_to_dashboard(alert)
     
     def _report_network_to_dashboard(self, bssid, packet_features):
-        """Send discovered network info to dashboard"""
+        """Send newly-discovered AP info to dashboard, including its trust state."""
         try:
+            trust = self.trust_states.get(bssid, TRUST_UNVERIFIED)
             payload = {
                 'ssid': packet_features.get('ssid', 'Unknown') or 'Unknown',
                 'mac': bssid,
-                'status': 'Monitored',
+                'status': trust,           # e.g. UNVERIFIED, MONITORING, TRUSTED …
                 'signal': int(packet_features.get('rssi', -100)) if packet_features.get('rssi') else -100,
                 'channel': int(packet_features.get('channel', 1)),
-                'vendor': packet_features.get('vendor', 'Unknown')
+                'vendor': packet_features.get('vendor', 'Unknown'),
+                'trust_state': trust,
             }
             requests.post(f"{self.dashboard_base_url}/networks", json=payload, timeout=1)
+        except:
+            pass
+
+    def _report_trust_state_to_dashboard(self, bssid, state):
+        """Push a trust-state change to the dashboard for a specific BSSID."""
+        try:
+            payload = {'mac': bssid, 'trust_state': state, 'status': state}
+            requests.patch(f"{self.dashboard_base_url}/networks/{bssid}", json=payload, timeout=1)
         except:
             pass
 
@@ -460,62 +487,18 @@ class AirSentinelEngine:
         except Exception as e:
             pass
     
-    def _extract_features(self, bssid):
-        """Extract features for a BSSID"""
-        
-        observations = self.ap_observations.get(bssid, [])
-        
-        if len(observations) < 3:
-            return None
-        
-        # Extract RSSI values
-        rssi_values = [obs['rssi'] for obs in observations if obs.get('rssi')]
-        
-        if not rssi_values:
-            return None
-        
-        rssi_mean = np.mean(rssi_values)
-        rssi_std = np.std(rssi_values)
-        rssi_min = np.min(rssi_values)
-        rssi_max = np.max(rssi_values)
-        
-        # Calculate RSSI sudden changes (for the 2 missing features)
-        rssi_changes = []
-        for i in range(1, len(rssi_values)):
-            change = abs(rssi_values[i] - rssi_values[i-1])
-            rssi_changes.append(change)
-        
-        rssi_sudden_change_max = max(rssi_changes) if rssi_changes else 0
-        rssi_sudden_change_mean = np.mean(rssi_changes) if rssi_changes else 0
-        
-        # Calculate features
-        ssid = self.ap_info[bssid]['ssid']
-        
-        features = {
-            'rssi_mean': rssi_mean,
-            'rssi_std': rssi_std,
-            'rssi_range': rssi_max - rssi_min,
-            'signal_stability': 1 - (rssi_std / max(abs(rssi_mean), 1)),
-            'time_since_first_seen': (datetime.now() - self.ap_info[bssid]['first_seen']).total_seconds(),
-            'beacon_timing_irregularity': rssi_std * 50,
-            'ssid_bssid_count': len(self.ssid_bssid_map[ssid]),
-            'channel_changes': 0,
-            'same_ssid_different_channels': 0,
-            'encryption_numeric': self._encode_encryption(observations[0]['encryption']),
-            'encryption_changed': 0,
-            'locally_administered_mac': observations[0]['locally_admin'],
-            'vendor_is_common': int(observations[0]['vendor'] in ['Cisco', 'Aruba', 'Ubiquiti', 'Ruckus']),
-            'vendor_mismatch': 0,
-            'disappearance_count': 0,
-            'rssi_sudden_change_max': rssi_sudden_change_max,  # Feature 16
-            'rssi_sudden_change_mean': rssi_sudden_change_mean,  # Feature 17
-            # Extra (not in model)
-            'ssid': ssid,
-            'vendor': observations[0]['vendor'],
-        }
-        
-        return features
-    
+ 
+    def _clear_previous_alerts(self):
+        """Reset alerts.json file on startup."""
+        log_file = "data/alerts.json"
+        try:
+            os.makedirs('data', exist_ok=True)
+            with open(log_file, 'w') as f:
+                json.dump([], f)
+            print("  ✓ History cleared: alerts.json")
+        except Exception as e:
+            print(f"  [!] Failed to clear history: {e}")
+
     def _encode_encryption(self, enc_type):
         """Encode encryption as number"""
         mapping = {
@@ -555,17 +538,22 @@ class AirSentinelEngine:
             print(f"Error logging alert: {e}")
     
     def print_status(self):
-        """Print current status"""
+        """Print current status including zero-trust state counts."""
         
         elapsed = (datetime.now() - self.start_time).total_seconds()
         
-        print(f"\r[Status] Packets: {self.total_packets} | "
-              f"APs: {len(self.ap_observations)} | "
-              f"Alerts: {len(self.alerts)} | "
-              f"Time: {elapsed:.0f}s", end='', flush=True)
+        unverified = sum(1 for s in self.trust_states.values() if s in (TRUST_UNVERIFIED, TRUST_MONITORING))
+        suspicious = sum(1 for s in self.trust_states.values() if s == TRUST_SUSPICIOUS)
+        threats    = sum(1 for s in self.trust_states.values() if s == TRUST_THREAT)
+        
+        print(f"\r[Status] Pkts: {self.total_packets} | "
+              f"APs: {len(self.extractor.ap_observations)} | "
+              f"Unverified: {unverified} | Suspicious: {suspicious} | Threats: {threats} | "
+              f"Alerts: {len(self.alerts)} | Time: {elapsed:.0f}s",
+              end='', flush=True)
     
     def print_summary(self):
-        """Print session summary"""
+        """Print session summary including zero-trust state breakdown."""
         
         print("\n")
         print("="*70)
@@ -576,15 +564,27 @@ class AirSentinelEngine:
         
         print(f"Duration:       {elapsed:.0f}s ({elapsed/60:.1f} min)")
         print(f"Packets:        {self.total_packets}")
-        print(f"APs observed:   {len(self.ap_observations)}")
+        print(f"APs observed:   {len(self.extractor.ap_observations)}")
         print(f"Threats found:  {len(self.alerts)}")
+        print()
+        
+        # Zero-Trust breakdown
+        state_counts = defaultdict(int)
+        for s in self.trust_states.values():
+            state_counts[s] += 1
+        
+        print("AP Breakdown:")
+        print(f"MONITORING:  {state_counts[TRUST_MONITORING]}")
+        print(f"UNVERIFIED:  {state_counts[TRUST_UNVERIFIED]}")
+        print(f"SUSPICIOUS:  {state_counts[TRUST_SUSPICIOUS]}")
+        print(f"THREAT:      {state_counts[TRUST_THREAT]}")
         print()
         
         if self.alerts:
             print("Threat Summary:")
-            high = sum(1 for a in self.alerts if a['level'] == 'HIGH')
+            high   = sum(1 for a in self.alerts if a['level'] == 'HIGH')
             medium = sum(1 for a in self.alerts if a['level'] == 'MEDIUM')
-            low = sum(1 for a in self.alerts if a['level'] == 'LOW')
+            low    = sum(1 for a in self.alerts if a['level'] == 'LOW')
             
             print(f"  HIGH:   {high}")
             print(f"  MEDIUM: {medium}")
@@ -592,9 +592,9 @@ class AirSentinelEngine:
             print()
             
             print("Recent Threats:")
-            for alert in self.alerts[-5:]:
-                time_str = alert['timestamp'].strftime('%H:%M:%S')
-                print(f"  [{time_str}] {alert['level']:6s} - {alert['ssid']}")
+            for a in self.alerts[-5:]:
+                time_str = a['timestamp'].strftime('%H:%M:%S')
+                print(f"  [{time_str}] {a['level']:6s} - {a['ssid']}")
         
         print("="*70)
     
@@ -646,66 +646,3 @@ class AirSentinelEngine:
                 hopper.stop()
 
         self.print_summary()
-
-def main():
-    parser = argparse.ArgumentParser(
-        description='AirSentinel Detection Engine',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Basic usage
-  sudo python3 detection_engine.py --model models/trained_model.joblib
-  
-  # Custom interface
-  sudo python3 detection_engine.py --model models/trained_model.joblib --interface mon1
-  
-  # Run for 30 minutes
-  sudo python3 detection_engine.py --model models/trained_model.joblib --duration 1800
-  
-  # Adjust sensitivity
-  sudo python3 detection_engine.py --model models/trained_model.joblib --threshold -0.5
-        """
-    )
-    
-    parser.add_argument('--model', required=True,
-                        help='Path to trained model (.pkl or .joblib)')
-    parser.add_argument('--scaler',
-                        help='Path to scaler (.pkl or .joblib) - auto-detected if not provided')
-    parser.add_argument('--interface', default='wlan0mon',
-                        help='Monitor mode interface (default: wlan0mon)')
-    parser.add_argument('--duration', type=int,
-                        help='Detection duration in seconds (default: continuous)')
-    parser.add_argument('--min-packets', type=int, default=10,
-                        help='Minimum packets before checking (default: 10)')
-    parser.add_argument('--threshold', type=float, default=-0.3,
-                        help='Alert threshold (default: -0.3, lower=more sensitive)')
-    parser.add_argument('--channels',
-                        help='Comma separated channel list (e.g. 1,6,11)')
-    parser.add_argument('--dwell-time', type=float, default=1.0,
-                        help='Seconds to stay on each channel (default: 1.0)')
-    
-    args = parser.parse_args()
-    
-    # Check root
-    if os.geteuid() != 0:
-        print("[!] Must run as root: sudo python3 detection_engine.py ...")
-        sys.exit(1)
-    
-    # Start engine
-    engine = AirSentinelEngine(
-        model_path=args.model,
-        scaler_path=args.scaler,
-        min_packets=args.min_packets,
-        alert_threshold=args.threshold
-    )
-    
-    engine.start(
-        interface=args.interface, 
-        duration=args.duration,
-        channels=args.channels,
-        dwell_time=args.dwell_time
-    )
-
-
-if __name__ == "__main__":
-    main()

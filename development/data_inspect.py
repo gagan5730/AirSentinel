@@ -6,7 +6,7 @@ import sys
 # --------------------------------------------------
 # CONFIG
 # --------------------------------------------------
-DATASET_FILE = sys.argv[1] if len(sys.argv) > 1 else "../data/overlap_test_dataset.json"
+DATASET_FILE = sys.argv[1] if len(sys.argv) > 1 else "../data/benchmark_dataset.json"
 
 # --------------------------------------------------
 # LOAD DATA

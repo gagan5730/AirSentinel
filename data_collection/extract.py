@@ -1,11 +1,11 @@
 from scapy.sendrecv import sniff
 import numpy as np
 import pandas as pd
-from capture import extract_ap_features
+from .capture import extract_ap_features
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from scapy.all import rdpcap
-from json_output import create_output_data, save_to_json, print_save_summary
+from .json_output import create_output_data, save_to_json, print_save_summary
 
 class RollingBuffer:
 	def __init__(self, max_age_seconds):
@@ -265,11 +265,39 @@ class FeatureExtractor:
             capability_values[-1] != initial_capability if capability_values else False
         )
         
-        seq_numbers = [obs['sequence_number'] for obs in recent_obs]
-        seq_diffs = np.diff(seq_numbers)
-        
-        features['seq_number_irregularity'] = np.std(seq_diffs) if len(seq_diffs) > 0 else 0
-        features['seq_number_backwards'] = int(np.any(seq_diffs < 0)) if len(seq_diffs) > 0 else 0
+        seq_numbers = [obs.get('sequence_number') for obs in recent_obs if obs.get('sequence_number') is not None]
+
+        if len(seq_numbers) >= 2:
+            MAX_SEQ = 4096
+
+            raw_diffs = np.diff(seq_numbers)
+            has_backward = np.any(raw_diffs < 0)
+
+            seq_diffs = []
+            for i in range(len(seq_numbers) - 1):
+                diff = seq_numbers[i+1] - seq_numbers[i]
+
+                if diff < -2000:
+                    diff += MAX_SEQ
+
+                seq_diffs.append(diff)
+
+            seq_diffs = np.array(seq_diffs)
+
+            std_diff = np.std(seq_diffs)
+
+            features['seq_number_irregularity'] = std_diff
+            features['seq_number_backwards'] = int(has_backward)
+            features['seq_out_of_order_rate'] = float(
+                np.sum(seq_diffs < 0) / len(seq_diffs)
+            ) if len(seq_diffs) > 0 else 0.0
+            features['seq_volatility'] = float(std_diff)
+
+        else:
+            features['seq_number_irregularity'] = 0.0
+            features['seq_number_backwards'] = 0
+            features['seq_out_of_order_rate'] = 0.0
+            features['seq_volatility'] = 0.0
         
         ie_orders = [obs['ie_order'] for obs in recent_obs]
         initial_ie_order = self.bssid_info[bssid]['initial_ie_order']

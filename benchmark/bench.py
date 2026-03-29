@@ -5,9 +5,9 @@ import pandas as pd
 from sklearn.metrics import confusion_matrix, classification_report
 import time
 
-MODEL_PATH = "../model/iforest_model.pkl"
-SCALER_PATH = "../model/scaler.pkl"
-DATASET_PATH = "../data/et_labeled_dataset.json"
+MODEL_PATH = "model/iforest_model.pkl"
+SCALER_PATH = "model/scaler.pkl"
+DATASET_PATH = "data/et_labeled_dataset.json"
 
 THRESHOLD = -0.0775
 ANOMALY_WINDOW = 5

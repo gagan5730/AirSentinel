@@ -6,6 +6,13 @@ __pycache__/
 # C extensions
 *.so
 
+# Generated outputs
+graphs/
+*.log
+
+# Experimental / temp
+*.bak
+
 # Distribution / packaging
 .Python
 build/
@@ -209,3 +216,10 @@ __marimo__/
 #Other
 data/
 pcap/*
+
+ET_setup/
+model/*2.pkl
+model/*2.txt
+test/*.pkl
+benchmark/et_setup.txt
+benchmark/tun2.py
