@@ -59,7 +59,7 @@ class TelegramNotifier:
             thread.start()
             return True
         except Exception as e:
-            print(f"  ❌ Notification thread error: {e}")
+            print(f"   Notification thread error: {e}")
             return False
 
     def _send_request_with_retry(self, url, payload, max_retries=5, initial_delay=5):
